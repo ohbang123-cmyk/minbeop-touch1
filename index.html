@@ -115,7 +115,7 @@ main{padding:15px}
 </div>
 
 <script>
-let BANK=[], ANSWERS={}, queue=[], current=null, slotIndex=0, locked=false;
+let BANK=[], ANSWERS={}, queue=[], current=null, slotIndex=0, locked=false, shownAnswerIndex=0;
 let stats=JSON.parse(localStorage.getItem('myn_civil_stats')||'{}');
 
 const $=id=>document.getElementById(id);
@@ -126,11 +126,11 @@ function key(qid,slot){return qid+":"+slot}
 function getStats(qid,slot){return stats[key(qid,slot)]||{right:0,wrong:0}}
 function setStats(qid,slot,ok){let s=getStats(qid,slot); ok?s.right++:s.wrong++; stats[key(qid,slot)]=s; saveStats(); updateStats();}
 function questionErrorCount(q){let t=0; for(let s=0;s<q.slots;s++) t+=getStats(q.id,s).wrong; return t}
-function hasAllAnswers(q){for(let s=0;s<q.slots;s++){let a=ANSWERS[key(q.id,s)]; if(!a || a.answerIndex===null || !Array.isArray(a.options) || a.options.length!==4) return false;} return true}
+function hasAllAnswers(q){for(let s=0;s<q.slots;s++){let a=ANSWERS[key(q.id,s)]; if(!a || a.answerIndex===null || !Array.isArray(a.options) || a.options.length!==2) return false;} return true}
 function shuffled(a){a=[...a]; for(let i=a.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]} return a}
 function buildQueue(){
   const mode=$('mode').value;
-  let qs=BANK.filter(q=>q.subject===$('subject').value && hasAllAnswers(q));
+  let qs=BANK.filter(q=>q.text && q.text.trim() && q.subject===$('subject').value && hasAllAnswers(q));
   if(mode==='wrong') qs=qs.filter(q=>questionErrorCount(q)>0);
   // Higher-error questions get more weight in wrong mode, but each question can appear once per cycle.
   if(mode==='wrong'){
@@ -139,7 +139,7 @@ function buildQueue(){
     qs=[...new Map(shuffled(weighted).map(q=>[q.id,q])).values()];
   } else qs=shuffled(qs);
   queue=qs;
-  $('notice').textContent=`현재 정답이 준비된 문제 ${qs.length}개 / 전체 ${BANK.length}개. 정답이 없는 문제는 정답 파일 업데이트 후 자동으로 출제됩니다.`;
+  $('notice').textContent=`현재 출제 가능한 문제 ${qs.length}개 / 전체 문제 ${BANK.length}개. 2지선다이며 정답 위치는 매번 불규칙하게 바뀝니다.`;
 }
 function nextQuestion(){
   if(queue.length===0) buildQueue();
@@ -160,6 +160,10 @@ function render(){
   locked=false;
   const a=ANSWERS[key(current.id,slotIndex)];
   const total=current.slots;
+  let shownOptions=[...a.options];
+  // Correct choice position is randomized each time the question is shown.
+  if(Math.random()<0.5){shownOptions.reverse();}
+  shownAnswerIndex=shownOptions.indexOf(a.options[a.answerIndex]);
   $('qno').textContent=current.id+'번';
   $('slot').textContent='빈칸 '+(slotIndex+1)+' / '+total;
   $('step').textContent=total>1?'이 문장의 빈칸을 앞에서부터 하나씩 풉니다.':'정답을 하나 선택하세요.';
@@ -167,10 +171,10 @@ function render(){
   $('choices').innerHTML='';
   $('feedback').className='feedback';
   $('ft').textContent='';$('fx').textContent='';$('fs').textContent='';
-  a.options.forEach((o,i)=>{
+  shownOptions.forEach((o,i)=>{
     const b=document.createElement('button');
     b.className='choice';
-    b.innerHTML='<span class="num">'+['①','②','③','④'][i]+'</span>'+escapeHtml(o);
+    b.innerHTML='<span class="num">'+['①','②'][i]+'</span>'+escapeHtml(o);
     b.onclick=()=>answer(i);
     $('choices').appendChild(b);
   });
@@ -180,11 +184,11 @@ function answer(i){
   if(locked)return; locked=true;
   const a=ANSWERS[key(current.id,slotIndex)];
   const bs=[...document.querySelectorAll('.choice')];
-  bs.forEach((b,n)=>{if(n===a.answerIndex)b.classList.add('correct'); if(n===i&&i!==a.answerIndex)b.classList.add('wrong'); if(n!==a.answerIndex&&n!==i)b.classList.add('dim'); b.disabled=true});
-  const ok=i===a.answerIndex;
+  bs.forEach((b,n)=>{if(n===shownAnswerIndex)b.classList.add('correct'); if(n===i&&i!==shownAnswerIndex)b.classList.add('wrong'); if(n!==shownAnswerIndex&&n!==i)b.classList.add('dim'); b.disabled=true});
+  const ok=i===shownAnswerIndex;
   setStats(current.id,slotIndex,ok);
   $('feedback').className='feedback show '+(ok?'good':'bad');
-  $('ft').textContent=ok?'✅ 정답':'❌ 오답 — 정답은 '+['①','②','③','④'][a.answerIndex]+'번';
+  $('ft').textContent=ok?'✅ 정답':'❌ 오답 — 정답은 '+['①','②'][shownAnswerIndex]+'번';
   $('fx').textContent=a.explanation||'';
   $('fs').textContent=a.verified?'출처 기준 확인 답안':'초안 답안 — 나중에 정답지로 교체 가능';
   setTimeout(()=>{
